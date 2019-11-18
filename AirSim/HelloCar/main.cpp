@@ -16,10 +16,18 @@ STRICT_MODE_ON
 
 using namespace msr::airlib;
 
+std::ofstream Valores("Valores.txt");
+
 void printCarPose(const msr::airlib::Pose &pose, float speed)
 {
 	std::cout << "x=" << pose.position[0] << " y=" << pose.position[1] << " v=" << speed << std::endl;
 }
+
+void saveCarPose(const msr::airlib::Pose &pose, float speed)
+{
+	Valores << pose.position[0] << "," << pose.position[1] << "," << speed << std::endl;
+}
+
 
 void moveForwardAndBackward(msr::airlib::CarRpcLibClient &client)
 {
@@ -66,7 +74,7 @@ int main()
 			auto car_pose = car_state.kinematics_estimated.pose;
 			auto car_speed = car_state.speed;
 
-			std::cout << "x=" << car_pose.position[0] << " y=" << car_pose.position[1] << " v=" << car_speed << std::endl;
+			saveCarPose(car_pose, car_speed);
 		}
 
 	}
@@ -74,6 +82,7 @@ int main()
         std::string msg = e.get_error().as<std::string>();
         std::cout << "Verifique a exceção lançada pela API do AirSim." << std::endl << msg << std::endl; std::cin.get();
     }
-
+	
+	Valores.close();
     return 0;
 }

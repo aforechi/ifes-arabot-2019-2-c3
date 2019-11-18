@@ -44,3 +44,4 @@
 *.opendb
 *.db-shm
 *.db-wal
+AirSim/HelloCar/build/x64/Debug/HelloCar.ilk
