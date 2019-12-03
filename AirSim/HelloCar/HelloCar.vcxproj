@@ -31,6 +31,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="PidControl.h" />
     <ClInclude Include="Waypoints.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

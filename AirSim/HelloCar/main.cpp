@@ -13,6 +13,7 @@ STRICT_MODE_ON
 #include <fstream>
 #include <math.h>
 #include "Waypoints.h"
+#include "PidControl.h"
 
 using namespace msr::airlib;
 
@@ -81,8 +82,7 @@ int main()
 	std::cin >> automatico;
 	if (automatico)
 		Pontos.LoadWaypoints("Valores.csv");
-
-	Pontos.SaveWaypoints("Valores2.csv");
+	PidControl velocity_control(1.0, 1.0, 0.01);
 
 	msr::airlib::CarRpcLibClient client;
 	try {
@@ -97,6 +97,11 @@ int main()
 			auto car_state = client.getCarState();
 			car_poseFinal = car_state.kinematics_estimated.pose;
 			auto car_speed = car_state.speed;
+
+			double desired_velocity;
+			velocity_control.update(car_speed, desired_velocity);
+
+
 			if (deveSalvarPonto(car_poseInitial, car_poseFinal, 1.0)) {
 				Pontos.AddWaypoints(car_poseFinal.position[0], car_poseFinal.position[1], car_speed);
 				car_poseInitial = car_poseFinal;
