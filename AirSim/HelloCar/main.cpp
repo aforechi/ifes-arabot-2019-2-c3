@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "common/common_utils/StrictMode.hpp"
 STRICT_MODE_OFF
 #ifndef RPCLIB_MSGPACK
@@ -11,40 +14,37 @@ STRICT_MODE_ON
 #include <iostream>
 #include <chrono>
 #include <fstream>
-#include <math.h>
+#include <sstream>
+#include"LateralControl.h"
+#include"LongitudinalControl.h"
 #include "Waypoints.h"
-#include "PidControl.h"
 
+
+
+using namespace std;
 using namespace msr::airlib;
+using msr::airlib::Pose;
 
-bool ChegouNoFinal(const msr::airlib::Pose &pose)
-{
-	if ((pose.position[0] > -5) && (pose.position[0] < 5)) {
-		if ((pose.position[1] > 0.1) && (pose.position[1] < 1.2)) {
-			return true;
-		}
-	}
-	return false;
-		
-}
-bool deveSalvarPonto(const msr::airlib::Pose &poseInitial, const msr::airlib::Pose &poseFinal, float intervalo)
-{
-	float finalXposition = poseFinal.position[0];
-	float finalYposition = poseFinal.position[1];
-	float initialXposition = poseInitial.position[0];
-	float initialYposition = poseInitial.position[1];
-	float dist = sqrt((pow((finalXposition - initialXposition), 2) + (pow((finalYposition - initialYposition), 2))));
-	if (dist >= intervalo) {
+
+float deveSalvar(const Pose &a, const Pose &b, float intervalo) {
+
+	float dist= sqrt((pow((b.position[0] - a.position[0]),2)+ pow((b.position[1] - a.position[1]),2)));
+	if (dist >= intervalo)
 		return true;
-	}
-	else {
-		return false;
-	}
+
+	return false;
 }
+
 
 void printCarPose(const msr::airlib::Pose &pose, float speed)
 {
 	std::cout << "x=" << pose.position[0] << " y=" << pose.position[1] << " v=" << speed << std::endl;
+
+}
+
+void saveCarPose(ofstream &Valores,const msr::airlib::Pose &pose, float speed)
+{
+	Valores << pose.position[0] << ";" << pose.position[1] << ";" << speed << std::endl;
 
 }
 
@@ -74,44 +74,86 @@ void moveForwardAndBackward(msr::airlib::CarRpcLibClient &client)
 	client.setCarControls(CarApiBase::CarControls());
 }
 
+void moveInTheTrajectory(msr::airlib::CarRpcLibClient &client, float &aceleration, float &steering) {
+	CarApiBase::CarControls controls;
+	if (aceleration >= 0)
+		controls.throttle = aceleration;
+	else
+		controls.brake = -aceleration;
+	controls.steering = steering;
+	client.setCarControls(controls);
+}
+
+
+bool chegada(const msr::airlib::Pose &pose) {
+	if (pose.position[0] > -3 && pose.position[0] <-1) {
+		if (pose.position[1] > -10 && pose.position[1] <10) {
+			return true;
+		}	
+	}
+	return false;
+}
+
+
 int main()
 {
-	Waypoints Pontos;
-	int automatico;
-	std::cout << "Escolha 0 para manual e 1 para automatico: \n";
-	std::cin >> automatico;
-	if (automatico)
-		Pontos.LoadWaypoints("Valores.csv");
-	PidControl velocity_control(1.0, 1.0, 0.01);
+	msr::airlib::CarRpcLibClient simulador;
+	Waypoints checkpoints, trajectory;
+	LateralControl lateral_control(2.3, 1.0, 8.0);
+	LongitudinalControl velocity_control(1.0, 1.0, 0.005);
 
-	msr::airlib::CarRpcLibClient client;
+	int opcao;
+	std::cout << "Favor digite a opcao de controle:\n";
+	std::cout << "Opcao 1-Manual\nOpcao 2-Automatico\n";
+	std::cin >> opcao;
+
 	try {
-		client.confirmConnection();
-		client.reset();
+		
+		simulador.confirmConnection();
+		simulador.reset();
 
-		msr::airlib::Pose car_poseInitial;
-		car_poseInitial.position[0] = 0;
-		car_poseInitial.position[1] = 0;
-		msr::airlib::Pose car_poseFinal;
+
+		if (opcao == 2) {
+			checkpoints.LoadWaypoints("Pontos.txt");
+			simulador.enableApiControl(true);
+		}
+
+		msr::airlib::Pose poseAnterior;
+		msr::airlib::Pose poseAtual;
+		poseAnterior.position[0] = 0;
+		poseAnterior.position[1] = 0;
+		
 		do {
-			auto car_state = client.getCarState();
-			car_poseFinal = car_state.kinematics_estimated.pose;
-			auto car_speed = car_state.speed;
+			auto car_state = simulador.getCarState();
+			poseAtual = car_state.kinematics_estimated.pose;
+			auto velocidade = car_state.speed;
 
-			double desired_velocity;
-			velocity_control.update(car_speed, desired_velocity);
+			if (opcao==2) {
 
-
-			if (deveSalvarPonto(car_poseInitial, car_poseFinal, 1.0)) {
-				Pontos.AddWaypoints(car_poseFinal.position[0], car_poseFinal.position[1], car_speed);
-				car_poseInitial = car_poseFinal;
+				Vector3r pose(poseAtual.position[0], poseAnterior.position[1], VectorMath::yawFromQuaternion(poseAtual.orientation));
+				double desired_velocity = checkpoints.GetWaypointVelocity(pose);
+				float steering = lateral_control.Update(checkpoints, pose, velocidade);
+				float aceleration = velocity_control.Update(velocidade, desired_velocity);
+				moveInTheTrajectory(simulador, aceleration, steering);
 			}
-		} while (!ChegouNoFinal(car_poseInitial));
-		Pontos.SaveWaypoints("Valores.csv");
+
+
+			if (deveSalvar(poseAnterior, poseAtual, 1)) {
+				trajectory.AddWaypoints(poseAtual.position[0], poseAtual.position[1], velocidade);
+				
+				poseAnterior = poseAtual;
+			}
+		} while (!chegada(poseAnterior));
+
+
+		trajectory.SaveWaypoints("trajetoria.txt");
 	}
-	catch (rpc::rpc_error&  e) {
+
+		
+	catch (rpc::rpc_error& e) {
 		std::string msg = e.get_error().as<std::string>();
 		std::cout << "Verifique a exceção lançada pela API do AirSim." << std::endl << msg << std::endl; std::cin.get();
 	}
+
 	return 0;
 }
