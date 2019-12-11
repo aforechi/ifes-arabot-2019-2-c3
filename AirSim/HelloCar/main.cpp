@@ -99,7 +99,7 @@ int main()
 {
 	msr::airlib::CarRpcLibClient simulador;
 	Waypoints checkpoints, trajectory;
-	LateralControl lateral_control(15.0, 1.0, 9.0);
+	LateralControl lateral_control(20.0, 1.0, 9.0);
 	LongitudinalControl velocity_control(1.0, 0.0, 0.01);
 
 	int opcao;
